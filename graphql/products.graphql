@@ -1,0 +1,255 @@
+# graphql/products.graphql
+
+"Product imported from CSV"
+type Product {
+    "Unique primary key"
+    id: ID!
+    
+    "Upload this product belongs to"
+    upload: Upload @belongsTo
+    
+    "Product handle (unique identifier)"
+    handle: String!
+    
+    "Product title"
+    title: String!
+    
+    "Product description HTML"
+    body_html: String
+    
+    "Product vendor"
+    vendor: String
+    
+    "Product type/category"
+    product_type: String
+    
+    "Product tags (comma-separated)"
+    tags: String
+    
+    "Whether product is published"
+    published: Boolean!
+    
+    "Variant SKU"
+    variant_sku: String
+    
+    "Variant price"
+    variant_price: Float
+    
+    "Variant compare at price"
+    variant_compare_at_price: Float
+    
+    "Variant requires shipping"
+    variant_requires_shipping: Boolean
+    
+    "Variant is taxable"
+    variant_taxable: Boolean
+    
+    "Variant inventory tracker"
+    variant_inventory_tracker: String
+    
+    "Variant inventory quantity"
+    variant_inventory_qty: Int
+    
+    "Variant inventory policy"
+    variant_inventory_policy: String
+    
+    "Variant fulfillment service"
+    variant_fulfillment_service: String
+    
+    "Variant weight"
+    variant_weight: Float
+    
+    "Variant weight unit"
+    variant_weight_unit: String
+    
+    "Product image source URL"
+    image_src: String
+    
+    "Image position"
+    image_position: Int
+    
+    "Image alt text"
+    image_alt_text: String
+    
+    "Import status (successful/failed)"
+    import_status: String
+    
+    "Error message if failed"
+    error_message: String
+    
+    "When the product was created"
+    created_at: DateTime!
+    
+    "When the product was updated"
+    updated_at: DateTime!
+}
+
+"CSV Upload record"
+type Upload {
+    "Unique primary key"
+    id: ID!
+    
+    "System filename"
+    filename: String!
+    
+    "Original uploaded filename"
+    original_filename: String!
+    
+    "File path on disk"
+    file_path: String!
+    
+    "File size in bytes"
+    file_size: Int!
+    
+    "Total rows in CSV"
+    total_rows: Int!
+    
+    "Rows processed so far"
+    processed_rows: Int!
+    
+    "Successfully imported products"
+    successful_rows: Int!
+    
+    "Failed import attempts"
+    failed_rows: Int!
+    
+    "Upload status (pending/processing/completed/failed)"
+    status: String!
+    
+    "When processing started"
+    started_at: DateTime
+    
+    "When processing completed"
+    completed_at: DateTime
+    
+    "All products from this upload"
+    products: [Product!]! @hasMany
+    
+    "Import logs for this upload"
+    logs: [ImportLog!]! @hasMany
+    
+    "When the upload was created"
+    created_at: DateTime!
+    
+    "When the upload was updated"
+    updated_at: DateTime!
+}
+
+"Import event log"
+type ImportLog {
+    "Unique primary key"
+    id: ID!
+    
+    "Upload this log belongs to"
+    upload: Upload @belongsTo
+    
+    "Product this log relates to (if applicable)"
+    product: Product @belongsTo
+    
+    "Log level (info/success/warning/error)"
+    level: String!
+    
+    "Action performed"
+    action: String!
+    
+    "Log message"
+    message: String!
+    
+    "Additional context data (JSON)"
+    context: String
+    
+    "When the log was created"
+    created_at: DateTime!
+}
+
+# ====================
+# QUERIES (READ)
+# ====================
+
+extend type Query {
+    "Get all products"
+    products: [Product!]! @all
+    
+    "Get single product by ID"
+    product(id: ID! @eq): Product @find
+    
+    "Get all uploads"
+    uploads: [Upload!]! @all
+    
+    "Get single upload by ID"
+    upload(id: ID! @eq): Upload @find
+    
+    "Get all import logs"
+    importLogs: [ImportLog!]! @all
+}
+
+# ====================
+# MUTATIONS (CREATE, UPDATE, DELETE)
+# ====================
+
+extend type Mutation {
+    # CREATE
+    "Create a new product"
+    createProduct(
+        upload_id: ID! @rules(apply: ["required", "exists:uploads,id"])
+        handle: String! @rules(apply: ["required", "string", "max:255", "unique:products,handle"])
+        title: String! @rules(apply: ["required", "string", "max:255"])
+        body_html: String
+        vendor: String
+        product_type: String
+        tags: String
+        published: Boolean
+        variant_sku: String
+        variant_price: Float
+        variant_compare_at_price: Float
+        variant_requires_shipping: Boolean
+        variant_taxable: Boolean
+        variant_inventory_tracker: String
+        variant_inventory_qty: Int
+        variant_inventory_policy: String
+        variant_fulfillment_service: String
+        variant_weight: Float
+        variant_weight_unit: String
+        image_src: String
+        image_position: Int
+        image_alt_text: String
+        import_status: String
+        error_message: String
+    ): Product @create
+    
+    # UPDATE
+    "Update an existing product"
+    updateProduct(
+        id: ID! @rules(apply: ["required", "exists:products,id"])
+        handle: String
+        title: String
+        body_html: String
+        vendor: String
+        product_type: String
+        tags: String
+        published: Boolean
+        variant_sku: String
+        variant_price: Float
+        variant_compare_at_price: Float
+        variant_requires_shipping: Boolean
+        variant_taxable: Boolean
+        variant_inventory_tracker: String
+        variant_inventory_qty: Int
+        variant_inventory_policy: String
+        variant_fulfillment_service: String
+        variant_weight: Float
+        variant_weight_unit: String
+        image_src: String
+        image_position: Int
+        image_alt_text: String
+        import_status: String
+        error_message: String
+    ): Product @update
+    
+    # DELETE
+    "Delete a product by ID"
+    deleteProduct(id: ID! @whereKey): Product @delete
+    
+    "Delete an upload and all its products"
+    deleteUpload(id: ID! @whereKey): Upload @delete
+}
