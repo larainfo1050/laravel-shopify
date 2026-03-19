@@ -1,0 +1,56 @@
+# graphql/task.graphql
+
+"A task item."
+type Task {
+    "Unique primary key."
+    id: ID!
+
+    "Task name."
+    name: String!
+
+    "Task description."
+    description: String
+
+    "Whether the task is completed."
+    completed: Boolean!
+
+    "When the task was created."
+    created_at: DateTime!
+
+    "When the task was last updated."
+    updated_at: DateTime!
+}
+
+extend type Query {
+    "Find a single task by ID."
+    task(id: ID! @eq): Task @find
+
+    "List all tasks."
+    tasks(
+      "Filter by completion status"
+      completed: Boolean @eq
+      
+      "Search by name"
+      name: String @where(operator: "like")
+    ): [Task!]! @paginate(defaultCount: 10)
+}
+
+extend type Mutation {
+    "Create a new task."
+    createTask(
+      name: String! @rules(apply: ["required", "string", "max:255"])
+      description: String
+      completed: Boolean
+    ): Task @create
+
+    "Update an existing task."
+    updateTask(
+      id: ID! @rules(apply: ["required", "exists:tasks,id"])
+      name: String
+      description: String
+      completed: Boolean
+    ): Task @update
+
+    "Delete a task."
+    deleteTask(id: ID! @whereKey): Task @delete
+}
