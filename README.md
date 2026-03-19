@@ -145,7 +145,8 @@ The main dashboard provides real-time statistics and upload management.
 - Currently Processing
 
 ![Dashboard](./docs/dashboard.png)
-![video](./docs/Upload%20CSV%20-%20CSV%20Import%20System.mp4)
+
+**[Watch Full Demo Video](./docs/Upload%20CSV%20-%20CSV%20Import%20System.mp4)** (Click to download)
 
 **Features:**
 - Live progress bars for each upload
