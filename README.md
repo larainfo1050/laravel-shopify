@@ -1,59 +1,399 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# CSV to Shopify Product Import System
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A Laravel 12 application that allows users to upload CSV files containing product data, processes them asynchronously using Laravel queues, and provides comprehensive tracking with modern UI and GraphQL API.
 
-## About Laravel
+## Core Technologies
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+-   **Backend:** Laravel 12
+-   **Frontend:** Blade Templates, Tailwind CSS (CDN)
+-   **Database:** MySQL 8.0+
+-   **Queue System:** Database Driver
+-   **CSV Parser:** `league/csv`
+-   **GraphQL API:** `nuwave/lighthouse`
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+---
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## 1. Installation and Setup
 
-## Learning Laravel
+Follow these steps to get the application running on your local machine.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+### Prerequisites
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+-   PHP >= 8.2
+-   Composer
+-   MySQL 8.0+
+-   Git
 
-## Laravel Sponsors
+### Step-by-Step Guide
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+1.  **Clone the Repository**
+    ```bash
+    git clone https://github.com/larainfo1050/laravel-shopify.git
+    cd laravel-shopify
+    ```
 
-### Premium Partners
+2.  **Install Dependencies**
+    ```bash
+    composer install
+    ```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+3.  **Environment Configuration**
+    Create your environment file and generate an application key.
+    ```bash
+    copy .env.example .env
+    php artisan key:generate
+    ```
 
-## Contributing
+4.  **Configure Database**
+    Open the `.env` file and update the database connection details.
+    ```dotenv
+    DB_CONNECTION=mysql
+    DB_HOST=127.0.0.1
+    DB_PORT=3306
+    DB_DATABASE=laravel_shopify
+    DB_USERNAME=root
+    DB_PASSWORD=your_password_here
+    ```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+    **Create Database:**
+    ```bash
+    mysql -u root -p
+    CREATE DATABASE laravel_shopify CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    EXIT;
+    ```
 
-## Code of Conduct
+5.  **Run Migrations**
+    This will create all necessary tables (uploads, products, import_logs, jobs).
+    ```bash
+    php artisan migrate
+    ```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+6.  **Create Upload Directory**
+    **Windows:**
+    ```bash
+    mkdir storage\app\uploads
+    ```
+    
+    **Linux/Mac:**
+    ```bash
+    mkdir -p storage/app/uploads
+    chmod -R 775 storage/app/uploads
+    ```
 
-## Security Vulnerabilities
+7.  **Start the Servers**
+    Open **3 separate terminals** and run:
+    
+    ```bash
+    # Terminal 1: Laravel Server
+    php artisan serve
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+    # Terminal 2: Queue Worker (Required for CSV processing!)
+    php artisan queue:work --tries=3 --timeout=300
 
-## License
+    # Terminal 3 (Optional): Queue Monitor
+    php artisan queue:listen
+    ```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+The application will be available at **http://localhost:8000**  
+GraphQL Playground at **http://localhost:8000/graphql-playground**
+
+---
+
+## 2. CSV Format
+
+The system supports Shopify product export format with **21 columns**:
+
+| Column | Description |
+|--------|-------------|
+| Handle | Unique product identifier |
+| Title | Product name |
+| Body (HTML) | Product description |
+| Vendor | Brand/Manufacturer |
+| Product Type | Category |
+| Tags | Comma-separated tags |
+| Published | TRUE/FALSE |
+| Variant SKU | Stock keeping unit |
+| Variant Price | Product price |
+| Variant Compare At Price | Original price |
+| Variant Requires Shipping | TRUE/FALSE |
+| Variant Taxable | TRUE/FALSE |
+| Variant Inventory Tracker | shopify/none |
+| Variant Inventory Qty | Stock quantity |
+| Variant Inventory Policy | deny/continue |
+| Variant Fulfillment Service | manual/automatic |
+| Variant Weight | Product weight |
+| Variant Weight Unit | kg/lb/g |
+| Image Src | Image URL |
+| Image Position | Sort order |
+| Image Alt Text | Image description |
+
+**Sample CSV file included:** `shopify-products-csv.txt` (10 test products)
+
+---
+
+## 3. Application Features & Workflow
+
+### Dashboard Overview
+
+The main dashboard provides real-time statistics and upload management.
+
+**Key Metrics:**
+- Total Uploads
+- Total Products
+- Successful Imports
+- Failed Imports
+- Currently Processing
+
+![Dashboard](./docs/dashboard.png)
+
+**Features:**
+- Live progress bars for each upload
+- Status badges (Pending, Processing, Completed, Failed)
+- File details (name, size, date)
+- Success/failure counts per upload
+- Quick delete functionality
+
+### Upload CSV File
+
+1. Navigate to **Upload CSV** in the navigation menu
+2. Drag and drop your CSV file (or click to browse)
+3. Supported formats: `.csv`, `.txt` (max 10MB)
+4. Click **Upload and Process**
+5. Automatically redirected to dashboard
+
+![Upload Interface](./docs/images/upload.png)
+
+**The system will:**
+- Validate file format
+- Store file securely in `storage/app/uploads/`
+- Create upload record in database
+- Dispatch async job to queue
+- Process products in background
+
+### Upload Details Page
+
+Click any upload to view comprehensive details:
+
+**Upload Summary:**
+- File information
+- Current status
+- Progress percentage
+- Statistics grid (Total/Successful/Failed/Processed)
+
+**Products Table:**
+- All imported products
+- Handle, Title, Vendor, Price, Stock
+- Import status for each product
+- Error messages if any
+
+**Import Logs:**
+- Expandable log entries
+- Level badges (Info, Success, Warning, Error)
+- JSON context viewer
+- Timestamp tracking
+
+![Upload Details](./docs/images/upload-details.png)
+
+### Products Management
+
+Browse and filter all imported products at `/products`
+
+**Features:**
+- 🔍 Search by product title or handle
+- 🎯 Filter by import status (Successful/Failed)
+- 📁 Filter by upload batch
+- 📄 Pagination (15 products per page)
+- 🔗 Linked to source upload
+- 💰 Price and stock information
+- ✅ Status indicators
+
+![Products Page](./docs/images/products.png)
+
+### Import Logs Viewer
+
+Comprehensive logging system at `/logs`
+
+**Features:**
+- Filter by log level (Info/Success/Warning/Error)
+- Filter by specific upload
+- Color-coded badges
+- Expandable JSON context
+- Linked to uploads and products
+- Full audit trail
+
+![Logs Viewer](./docs/images/logs.png)
+
+### Duplicate Prevention
+
+**Intelligent Update Logic:**
+- Detects existing products by `handle` (unique identifier)
+- Updates existing products instead of creating duplicates
+- Tracks "created" vs "updated" operations
+- ACID transactions ensure data integrity
+- Full logging of update operations
+
+**Example:** Upload same CSV twice
+- First upload: Creates 10 new products
+- Second upload: Updates same 10 products (no duplicates!)
+
+---
+
+## 4. GraphQL API
+
+Full CRUD API available at: **http://127.0.0.1:8000/graphiql**
+
+### Quick Start Examples
+
+#### Get All Products
+```graphql
+mutation CreateProduct {
+  createProduct(
+    upload_id: 1
+    handle: "test-product-001"
+    title: "Test Product"
+    published: true
+    variant_price: 19.99
+    variant_inventory_qty: 100
+  ) {
+    id
+    handle
+    title
+    variant_price
+    variant_inventory_qty
+    created_at
+  }
+}
+
+mutation CreateFullProduct {
+  createProduct(
+    upload_id: 1
+    handle: "premium-blue-shirt"
+    title: "Premium Blue Shirt"
+    body_html: "<p>High quality cotton shirt in ocean blue</p>"
+    vendor: "Fashion Store"
+    product_type: "Apparel"
+    tags: "shirt, blue, premium, cotton"
+    published: true
+    variant_sku: "SHIRT-BLUE-001"
+    variant_price: 45.99
+    variant_compare_at_price: 59.99
+    variant_requires_shipping: true
+    variant_taxable: true
+    variant_inventory_tracker: "shopify"
+    variant_inventory_qty: 75
+    variant_inventory_policy: "deny"
+    variant_fulfillment_service: "manual"
+    variant_weight: 0.5
+    variant_weight_unit: "kg"
+    image_src: "https://example.com/blue-shirt.jpg"
+    image_position: 1
+    image_alt_text: "Premium Blue Cotton Shirt"
+    import_status: "successful"
+  ) {
+    id
+    handle
+    title
+    vendor
+    variant_price
+    variant_inventory_qty
+    published
+    created_at
+  }
+}
+
+mutation UpdateFull {
+  updateProduct(
+    id: 1
+    handle: "updated-handle"
+    title: "Updated Title"
+    body_html: "<p>Updated body</p>"
+    vendor: "New Vendor"
+    product_type: "New Type"
+    tags: "tag1, tag2"
+    published: true
+    variant_sku: "NEW-SKU-001"
+    variant_price: 99.99
+    variant_compare_at_price: 129.99
+    variant_requires_shipping: true
+    variant_taxable: true
+    variant_inventory_tracker: "shopify"
+    variant_inventory_qty: 200
+    variant_inventory_policy: "continue"
+    variant_fulfillment_service: "manual"
+    variant_weight: 1.5
+    variant_weight_unit: "kg"
+    image_src: "https://example.com/new-image.jpg"
+    image_position: 1
+    image_alt_text: "New Image"
+    import_status: "successful"
+  ) {
+    id
+    handle
+    title
+    variant_price
+    variant_inventory_qty
+    updated_at
+  }
+}
+
+query GetAllProducts {
+  products {
+    id
+    handle
+    title
+    vendor
+    variant_price
+    variant_inventory_qty
+    published
+    import_status
+    created_at
+  }
+}
+
+query GetProduct {
+  product(id: 1) {
+    id
+    handle
+    title
+    body_html
+    vendor
+    product_type
+    tags
+    published
+    variant_sku
+    variant_price
+    variant_compare_at_price
+    variant_requires_shipping
+    variant_taxable
+    variant_inventory_tracker
+    variant_inventory_qty
+    variant_inventory_policy
+    variant_fulfillment_service
+    variant_weight
+    variant_weight_unit
+    image_src
+    image_position
+    image_alt_text
+    import_status
+    error_message
+    created_at
+    updated_at
+    upload {
+      id
+      original_filename
+      status
+    }
+  }
+}
+mutation UpdatePrice {
+  updateProduct(
+    id: 1
+    variant_price: 29.99
+  ) {
+    id
+    handle
+    title
+    variant_price
+    updated_at
+  }
+}
