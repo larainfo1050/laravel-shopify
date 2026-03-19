@@ -8,27 +8,21 @@ use App\Models\Product;
 use App\Models\ImportLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use League\Csv\Reader;
 
 class UploadController extends Controller
 {
-    /**
-     * Show upload form
-     */
     public function create()
     {
         return view('upload.create');
     }
 
-    /**
-     * Handle file upload and process CSV
-     */
     public function store(Request $request)
     {
-        // Validate file
         $request->validate([
-            'csv_file' => 'required|file|mimes:csv,txt|max:10240', // 10MB max
+            'csv_file' => 'required|file|mimes:csv,txt|max:10240',
         ]);
 
         try {
@@ -36,19 +30,59 @@ class UploadController extends Controller
             $originalName = $file->getClientOriginalName();
             $filename = Str::uuid() . '.csv';
             
-            // Store file
-            $filePath = $file->storeAs('uploads', $filename);
+            Log::info('=== UPLOAD START ===', [
+                'original_name' => $originalName,
+                'generated_name' => $filename
+            ]);
+
+            // Ensure uploads directory exists with proper permissions
+            $uploadsPath = storage_path('app') . DIRECTORY_SEPARATOR . 'uploads';
+            if (!is_dir($uploadsPath)) {
+                mkdir($uploadsPath, 0777, true);
+                chmod($uploadsPath, 0777); // Force permissions
+                Log::info('Created uploads directory', ['path' => $uploadsPath]);
+            }
+            
+            // Build full file path
+            $fullPath = $uploadsPath . DIRECTORY_SEPARATOR . $filename;
+            
+            Log::info('Target path', [
+                'uploads_dir' => $uploadsPath,
+                'full_path' => $fullPath,
+                'dir_exists' => is_dir($uploadsPath),
+                'dir_writable' => is_writable($uploadsPath)
+            ]);
+
+            // Move uploaded file manually (more reliable than Storage on Windows)
+            if (!$file->move($uploadsPath, $filename)) {
+                throw new \Exception("Failed to move uploaded file");
+            }
+            
+            // Verify file exists
+            if (!file_exists($fullPath)) {
+                throw new \Exception("File was not saved to: {$fullPath}");
+            }
+            
+            $fileSize = filesize($fullPath);
+            
+            Log::info('File saved successfully', [
+                'path' => $fullPath,
+                'size' => $fileSize,
+                'exists' => file_exists($fullPath),
+                'readable' => is_readable($fullPath)
+            ]);
 
             // Create upload record
             $upload = Upload::create([
                 'filename' => $filename,
                 'original_filename' => $originalName,
-                'file_path' => $filePath,
-                'file_size' => $file->getSize(),
+                'file_path' => 'uploads' . DIRECTORY_SEPARATOR . $filename,
+                'file_size' => $fileSize,
                 'status' => 'pending'
             ]);
 
-            // Log upload started
+            Log::info('Upload record created', ['upload_id' => $upload->id]);
+
             ImportLog::log(
                 $upload->id,
                 'info',
@@ -56,7 +90,7 @@ class UploadController extends Controller
                 "File uploaded: {$originalName}"
             );
 
-            // Process CSV immediately (no queue for now)
+            // Process CSV
             $this->processCsv($upload);
 
             return redirect()
@@ -64,37 +98,61 @@ class UploadController extends Controller
                 ->with('success', 'CSV file uploaded and processed successfully!');
 
         } catch (\Exception $e) {
+            Log::error('Upload failed', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
             return back()
-                ->withInput()
                 ->with('error', 'Upload failed: ' . $e->getMessage());
         }
     }
 
-    /**
-     * Process CSV file
-     */
     private function processCsv(Upload $upload)
     {
         try {
+            Log::info('=== CSV PROCESSING START ===', ['upload_id' => $upload->id]);
+
             $upload->update([
                 'status' => 'processing',
                 'started_at' => now()
             ]);
 
-            $filePath = storage_path('app/' . $upload->file_path);
+            // Build path properly
+            $filePath = storage_path('app') . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $upload->file_path);
+            
+            Log::info('Reading CSV', [
+                'path' => $filePath,
+                'exists' => file_exists($filePath),
+                'size' => file_exists($filePath) ? filesize($filePath) : 0,
+                'readable' => is_readable($filePath)
+            ]);
+
+            if (!file_exists($filePath)) {
+                throw new \Exception("File not found: {$filePath}");
+            }
             
             // Parse CSV
             $csv = Reader::createFromPath($filePath, 'r');
             $csv->setHeaderOffset(0);
+            
+            $headers = $csv->getHeader();
+            Log::info('CSV headers', ['headers' => $headers]);
+            
             $records = iterator_to_array($csv->getRecords());
+            $totalRows = count($records);
+            
+            $upload->update(['total_rows' => $totalRows]);
 
-            $upload->update(['total_rows' => count($records)]);
+            Log::info('CSV parsed', ['total_rows' => $totalRows]);
 
             ImportLog::log(
                 $upload->id,
                 'info',
                 'csv_parsed',
-                "Found " . count($records) . " products in CSV"
+                "Found {$totalRows} products in CSV"
             );
 
             // Process each row
@@ -102,18 +160,18 @@ class UploadController extends Controller
                 try {
                     $product = Product::create([
                         'upload_id' => $upload->id,
-                        'handle' => $row['Handle'] ?? '',
-                        'title' => $row['Title'] ?? '',
+                        'handle' => trim($row['Handle'] ?? ''),
+                        'title' => trim($row['Title'] ?? ''),
                         'body_html' => $row['Body HTML'] ?? null,
                         'vendor' => $row['Vendor'] ?? null,
                         'product_type' => $row['Product Type'] ?? null,
                         'tags' => $row['Tags'] ?? null,
-                        'published' => strtoupper($row['Published'] ?? 'FALSE') === 'TRUE',
+                        'published' => strtoupper(trim($row['Published'] ?? 'FALSE')) === 'TRUE',
                         'variant_sku' => $row['Variant SKU'] ?? null,
                         'variant_price' => (float) ($row['Variant Price'] ?? 0),
                         'variant_compare_at_price' => !empty($row['Variant Compare At Price']) ? (float) $row['Variant Compare At Price'] : null,
-                        'variant_requires_shipping' => strtoupper($row['Variant Requires Shipping'] ?? 'TRUE') === 'TRUE',
-                        'variant_taxable' => strtoupper($row['Variant Taxable'] ?? 'TRUE') === 'TRUE',
+                        'variant_requires_shipping' => strtoupper(trim($row['Variant Requires Shipping'] ?? 'TRUE')) === 'TRUE',
+                        'variant_taxable' => strtoupper(trim($row['Variant Taxable'] ?? 'TRUE')) === 'TRUE',
                         'variant_inventory_tracker' => $row['Variant Inventory Tracker'] ?? null,
                         'variant_inventory_qty' => (int) ($row['Variant Inventory Qty'] ?? 0),
                         'variant_inventory_policy' => $row['Variant Inventory Policy'] ?? null,
@@ -128,6 +186,11 @@ class UploadController extends Controller
 
                     $upload->increment('successful_rows');
 
+                    Log::info('Product imported', [
+                        'id' => $product->id,
+                        'handle' => $product->handle
+                    ]);
+
                     ImportLog::log(
                         $upload->id,
                         'success',
@@ -139,23 +202,30 @@ class UploadController extends Controller
                 } catch (\Exception $e) {
                     $upload->increment('failed_rows');
 
+                    Log::error('Product failed', [
+                        'row' => $index + 1,
+                        'error' => $e->getMessage()
+                    ]);
+
                     ImportLog::log(
                         $upload->id,
                         'error',
                         'product_failed',
-                        "Failed to import row " . ($index + 1) . ": " . $e->getMessage(),
-                        null,
-                        ['row' => $row, 'error' => $e->getMessage()]
+                        "Failed row " . ($index + 1) . ": " . $e->getMessage()
                     );
                 }
 
                 $upload->increment('processed_rows');
             }
 
-            // Mark as completed
             $upload->update([
                 'status' => 'completed',
                 'completed_at' => now()
+            ]);
+
+            Log::info('=== PROCESSING COMPLETE ===', [
+                'successful' => $upload->successful_rows,
+                'failed' => $upload->failed_rows
             ]);
 
             ImportLog::log(
@@ -171,6 +241,10 @@ class UploadController extends Controller
                 'completed_at' => now()
             ]);
 
+            Log::error('=== PROCESSING FAILED ===', [
+                'error' => $e->getMessage()
+            ]);
+
             ImportLog::log(
                 $upload->id,
                 'error',
@@ -180,18 +254,15 @@ class UploadController extends Controller
         }
     }
 
-    /**
-     * Delete upload
-     */
     public function destroy(Upload $upload)
     {
         try {
-            // Delete file
-            if (Storage::exists($upload->file_path)) {
-                Storage::delete($upload->file_path);
+            $filePath = storage_path('app') . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $upload->file_path);
+            
+            if (file_exists($filePath)) {
+                unlink($filePath);
             }
 
-            // Delete record (cascade will delete products and logs)
             $upload->delete();
 
             return redirect()
