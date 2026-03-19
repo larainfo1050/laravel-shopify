@@ -13,6 +13,20 @@ return new class extends Migration
     {
         Schema::create('uploads', function (Blueprint $table) {
             $table->id();
+            $table->string('filename');
+            $table->string('original_filename');
+            $table->string('file_path');
+            $table->integer('file_size')->nullable();
+            
+            $table->integer('total_rows')->default(0);
+            $table->integer('processed_rows')->default(0);
+            $table->integer('successful_rows')->default(0);
+            $table->integer('failed_rows')->default(0);
+            
+            $table->enum('status', ['pending', 'processing', 'completed', 'failed'])->default('pending');
+            
+            $table->timestamp('started_at')->nullable();
+            $table->timestamp('completed_at')->nullable();
             $table->timestamps();
         });
     }

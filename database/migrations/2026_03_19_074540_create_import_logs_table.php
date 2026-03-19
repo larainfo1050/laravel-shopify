@@ -13,6 +13,13 @@ return new class extends Migration
     {
         Schema::create('import_logs', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('upload_id')->constrained()->onDelete('cascade');
+            $table->foreignId('product_id')->nullable()->constrained()->onDelete('cascade');
+            
+            $table->enum('level', ['info', 'warning', 'error', 'success'])->default('info');
+            $table->string('action');
+            $table->text('message');
+            $table->json('context')->nullable();
             $table->timestamps();
         });
     }
