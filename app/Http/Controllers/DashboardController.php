@@ -23,7 +23,16 @@ class DashboardController extends Controller
         ->orderBy('created_at', 'desc')
         ->paginate(10);
 
-        return view('dashboard.index', compact('uploads'));
+        // Dashboard stats
+        $stats = [
+            'total_uploads' => Upload::count(),
+            'total_products' => Product::count(),
+            'successful_products' => Product::where('import_status', 'successful')->count(),
+            'failed_products' => Product::where('import_status', 'failed')->count(),
+            'processing_uploads' => Upload::where('status', 'processing')->count(),
+        ];
+
+        return view('dashboard.index', compact('uploads', 'stats'));
     }
 
     /**
