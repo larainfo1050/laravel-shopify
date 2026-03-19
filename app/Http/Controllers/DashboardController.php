@@ -60,4 +60,37 @@ class DashboardController extends Controller
 
         return view('dashboard.logs', compact('logs', 'uploads'));
     }
+
+    /**
+     * Show all products
+     */
+    public function products(Request $request)
+    {
+        $query = Product::with('upload')
+            ->orderBy('created_at', 'desc');
+
+        // Filter by status
+        if ($request->has('status') && $request->status != '') {
+            $query->where('import_status', $request->status);
+        }
+
+        // Filter by upload
+        if ($request->has('upload_id') && $request->upload_id != '') {
+            $query->where('upload_id', $request->upload_id);
+        }
+
+        // Search by handle or title
+        if ($request->has('search') && $request->search != '') {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('handle', 'like', "%{$search}%")
+                ->orWhere('title', 'like', "%{$search}%");
+            });
+        }
+
+        $products = $query->paginate(20);
+        $uploads = Upload::orderBy('created_at', 'desc')->get();
+
+        return view('dashboard.products', compact('products', 'uploads'));
+    }
 }

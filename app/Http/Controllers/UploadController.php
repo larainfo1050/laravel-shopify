@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 use App\Models\Upload;
 use App\Models\Product;
 use App\Models\ImportLog;
+use App\Jobs\ProcessCsvImport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
@@ -91,12 +92,12 @@ class UploadController extends Controller
                 "File uploaded: {$originalName}"
             );
 
-            // Process CSV
-            $this->processCsv($upload);
+            // Dispatch CSV processing job
+            ProcessCsvImport::dispatch($upload);
 
             return redirect()
                 ->route('dashboard.show', $upload->id)
-                ->with('success', 'CSV file uploaded and processed successfully!');
+                ->with('success', 'CSV file uploaded and processing has started!');
 
         } catch (\Exception $e) {
             Log::error('Upload failed', [
@@ -108,163 +109,6 @@ class UploadController extends Controller
 
             return back()
                 ->with('error', 'Upload failed: ' . $e->getMessage());
-        }
-    }
-
-    private function processCsv(Upload $upload)
-    {
-        try {
-            Log::info('=== CSV PROCESSING START ===', ['upload_id' => $upload->id]);
-
-            $upload->update([
-                'status' => 'processing',
-                'started_at' => now()
-            ]);
-
-            // Build path properly
-            $filePath = storage_path('app') . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $upload->file_path);
-            
-            Log::info('Reading CSV', [
-                'path' => $filePath,
-                'exists' => file_exists($filePath),
-                'size' => file_exists($filePath) ? filesize($filePath) : 0,
-                'readable' => is_readable($filePath)
-            ]);
-
-            if (!file_exists($filePath)) {
-                throw new \Exception("File not found: {$filePath}");
-            }
-            
-            // Parse CSV
-            $csv = Reader::createFromPath($filePath, 'r');
-            $csv->setHeaderOffset(0);
-            
-            $headers = $csv->getHeader();
-            Log::info('CSV headers', ['headers' => $headers]);
-            
-            $records = iterator_to_array($csv->getRecords());
-            $totalRows = count($records);
-            
-            $upload->update(['total_rows' => $totalRows]);
-
-            Log::info('CSV parsed', ['total_rows' => $totalRows]);
-
-            ImportLog::log(
-                $upload->id,
-                'info',
-                'csv_parsed',
-                "Found {$totalRows} products in CSV"
-            );
-
-            // Process each row
-            foreach ($records as $index => $row) {
-                try {
-                    // Per-product transaction for ACID properties
-                    DB::transaction(function () use ($upload, $row, $index) {
-                        $handle = trim($row['Handle'] ?? '');
-                        
-                        // Update if exists, create if not (prevents duplicates)
-                        $product = Product::updateOrCreate(
-                            ['handle' => $handle], // Search by unique handle
-                            [
-                                'upload_id' => $upload->id,
-                                'title' => trim($row['Title'] ?? ''),
-                                'body_html' => $row['Body HTML'] ?? null,
-                                'vendor' => $row['Vendor'] ?? null,
-                                'product_type' => $row['Product Type'] ?? null,
-                                'tags' => $row['Tags'] ?? null,
-                                'published' => strtoupper(trim($row['Published'] ?? 'FALSE')) === 'TRUE',
-                                'variant_sku' => $row['Variant SKU'] ?? null,
-                                'variant_price' => (float) ($row['Variant Price'] ?? 0),
-                                'variant_compare_at_price' => !empty($row['Variant Compare At Price']) ? (float) $row['Variant Compare At Price'] : null,
-                                'variant_requires_shipping' => strtoupper(trim($row['Variant Requires Shipping'] ?? 'TRUE')) === 'TRUE',
-                                'variant_taxable' => strtoupper(trim($row['Variant Taxable'] ?? 'TRUE')) === 'TRUE',
-                                'variant_inventory_tracker' => $row['Variant Inventory Tracker'] ?? null,
-                                'variant_inventory_qty' => (int) ($row['Variant Inventory Qty'] ?? 0),
-                                'variant_inventory_policy' => $row['Variant Inventory Policy'] ?? null,
-                                'variant_fulfillment_service' => $row['Variant Fulfillment Service'] ?? null,
-                                'variant_weight' => !empty($row['Variant Weight']) ? (float) $row['Variant Weight'] : null,
-                                'variant_weight_unit' => $row['Variant Weight Unit'] ?? null,
-                                'image_src' => $row['Image Src'] ?? null,
-                                'image_position' => !empty($row['Image Position']) ? (int) $row['Image Position'] : null,
-                                'image_alt_text' => $row['Image Alt Text'] ?? null,
-                                'import_status' => 'successful'
-                            ]
-                        );
-
-                        // Check if product was just created or updated
-                        $action = $product->wasRecentlyCreated ? 'created' : 'updated';
-
-                        Log::info("Product {$action}", [
-                            'id' => $product->id,
-                            'handle' => $product->handle,
-                            'action' => $action
-                        ]);
-
-                        ImportLog::log(
-                            $upload->id,
-                            'success',
-                            "product_{$action}",
-                            "Product {$action}: {$product->title}",
-                            $product->id
-                        );
-                    });
-
-                    $upload->increment('successful_rows');
-
-                } catch (\Exception $e) {
-                    $upload->increment('failed_rows');
-
-                    Log::error('Product transaction failed', [
-                        'row' => $index + 1,
-                        'handle' => $row['Handle'] ?? 'unknown',
-                        'error' => $e->getMessage()
-                    ]);
-
-                    ImportLog::log(
-                        $upload->id,
-                        'error',
-                        'product_failed',
-                        "Failed row " . ($index + 1) . ": " . $e->getMessage()
-                    );
-                }
-
-                $upload->increment('processed_rows');
-            }
-
-            $upload->update([
-                'status' => 'completed',
-                'completed_at' => now()
-            ]);
-
-            Log::info('=== PROCESSING COMPLETE ===', [
-                'successful' => $upload->successful_rows,
-                'failed' => $upload->failed_rows
-            ]);
-
-            ImportLog::log(
-                $upload->id,
-                'success',
-                'import_completed',
-                "Import completed. Success: {$upload->successful_rows}, Failed: {$upload->failed_rows}"
-            );
-
-        } catch (\Exception $e) {
-            $upload->update([
-                'status' => 'failed',
-                'completed_at' => now()
-            ]);
-
-            Log::error('=== PROCESSING FAILED ===', [
-                'error' => $e->getMessage()
-            ]);
-
-            ImportLog::log(
-                $upload->id,
-                'error',
-                'import_failed',
-                "Import failed: " . $e->getMessage()
-            );
         }
     }
 

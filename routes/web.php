@@ -8,6 +8,7 @@ use App\Http\Controllers\UploadController;
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 Route::get('/uploads/{id}', [DashboardController::class, 'show'])->name('dashboard.show');
 Route::get('/logs', [DashboardController::class, 'logs'])->name('logs');
+Route::get('/products', [DashboardController::class, 'products'])->name('products');
 
 // Upload
 Route::get('/upload', [UploadController::class, 'create'])->name('upload.create');

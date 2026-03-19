@@ -4,7 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
-        <title>{{ config('app.name', 'Laravel') }}</title>
+        <title>@yield('HomeFy', 'Home')</title>
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
@@ -36,6 +36,9 @@
                     </a>
                     <a href="{{ route('logs') }}" class="text-gray-600 hover:text-gray-900">
                         Logs
+                    </a>
+                    <a href="{{ route('products') }}" class="text-gray-600 hover:text-gray-900">
+                        Products
                     </a>
                 </div>
             </div>
