@@ -95,7 +95,7 @@ Follow these steps to get the application running on your local machine.
     ```
 
 The application will be available at **http://localhost:8000**  
-GraphQL Playground at **http://localhost:8000/graphql-playground**
+GraphQL Playground at **http://localhost:8000/graphiql**
 
 ---
 
@@ -145,6 +145,7 @@ The main dashboard provides real-time statistics and upload management.
 - Currently Processing
 
 ![Dashboard](./docs/dashboard.png)
+![video](./docs/Upload%20CSV%20-%20CSV%20Import%20System.mp4)
 
 **Features:**
 - Live progress bars for each upload
@@ -160,8 +161,6 @@ The main dashboard provides real-time statistics and upload management.
 3. Supported formats: `.csv`, `.txt` (max 10MB)
 4. Click **Upload and Process**
 5. Automatically redirected to dashboard
-
-![Upload Interface](./docs/images/upload.png)
 
 **The system will:**
 - Validate file format
@@ -192,51 +191,10 @@ Click any upload to view comprehensive details:
 - JSON context viewer
 - Timestamp tracking
 
-![Upload Details](./docs/images/upload-details.png)
-
 ### Products Management
 
 Browse and filter all imported products at `/products`
 
-**Features:**
-- 🔍 Search by product title or handle
-- 🎯 Filter by import status (Successful/Failed)
-- 📁 Filter by upload batch
-- 📄 Pagination (15 products per page)
-- 🔗 Linked to source upload
-- 💰 Price and stock information
-- ✅ Status indicators
-
-![Products Page](./docs/images/products.png)
-
-### Import Logs Viewer
-
-Comprehensive logging system at `/logs`
-
-**Features:**
-- Filter by log level (Info/Success/Warning/Error)
-- Filter by specific upload
-- Color-coded badges
-- Expandable JSON context
-- Linked to uploads and products
-- Full audit trail
-
-![Logs Viewer](./docs/images/logs.png)
-
-### Duplicate Prevention
-
-**Intelligent Update Logic:**
-- Detects existing products by `handle` (unique identifier)
-- Updates existing products instead of creating duplicates
-- Tracks "created" vs "updated" operations
-- ACID transactions ensure data integrity
-- Full logging of update operations
-
-**Example:** Upload same CSV twice
-- First upload: Creates 10 new products
-- Second upload: Updates same 10 products (no duplicates!)
-
----
 
 ## 4. GraphQL API
 
@@ -397,3 +355,8 @@ mutation UpdatePrice {
     updated_at
   }
 }
+
+## ⚠️ Important Note: No Shopify API Integration
+
+**This project does NOT integrate with Shopify API.** 
+![Upload Details](./docs/Laravel-Import-Test-03-19-2026_03_27_PM.png)
