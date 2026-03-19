@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use League\Csv\Reader;
+use Illuminate\Support\Facades\DB;
 
 class UploadController extends Controller
 {
@@ -158,52 +159,65 @@ class UploadController extends Controller
             // Process each row
             foreach ($records as $index => $row) {
                 try {
-                    $product = Product::create([
-                        'upload_id' => $upload->id,
-                        'handle' => trim($row['Handle'] ?? ''),
-                        'title' => trim($row['Title'] ?? ''),
-                        'body_html' => $row['Body HTML'] ?? null,
-                        'vendor' => $row['Vendor'] ?? null,
-                        'product_type' => $row['Product Type'] ?? null,
-                        'tags' => $row['Tags'] ?? null,
-                        'published' => strtoupper(trim($row['Published'] ?? 'FALSE')) === 'TRUE',
-                        'variant_sku' => $row['Variant SKU'] ?? null,
-                        'variant_price' => (float) ($row['Variant Price'] ?? 0),
-                        'variant_compare_at_price' => !empty($row['Variant Compare At Price']) ? (float) $row['Variant Compare At Price'] : null,
-                        'variant_requires_shipping' => strtoupper(trim($row['Variant Requires Shipping'] ?? 'TRUE')) === 'TRUE',
-                        'variant_taxable' => strtoupper(trim($row['Variant Taxable'] ?? 'TRUE')) === 'TRUE',
-                        'variant_inventory_tracker' => $row['Variant Inventory Tracker'] ?? null,
-                        'variant_inventory_qty' => (int) ($row['Variant Inventory Qty'] ?? 0),
-                        'variant_inventory_policy' => $row['Variant Inventory Policy'] ?? null,
-                        'variant_fulfillment_service' => $row['Variant Fulfillment Service'] ?? null,
-                        'variant_weight' => !empty($row['Variant Weight']) ? (float) $row['Variant Weight'] : null,
-                        'variant_weight_unit' => $row['Variant Weight Unit'] ?? null,
-                        'image_src' => $row['Image Src'] ?? null,
-                        'image_position' => !empty($row['Image Position']) ? (int) $row['Image Position'] : null,
-                        'image_alt_text' => $row['Image Alt Text'] ?? null,
-                        'import_status' => 'successful'
-                    ]);
+                    // Per-product transaction for ACID properties
+                    DB::transaction(function () use ($upload, $row, $index) {
+                        $handle = trim($row['Handle'] ?? '');
+                        
+                        // Update if exists, create if not (prevents duplicates)
+                        $product = Product::updateOrCreate(
+                            ['handle' => $handle], // Search by unique handle
+                            [
+                                'upload_id' => $upload->id,
+                                'title' => trim($row['Title'] ?? ''),
+                                'body_html' => $row['Body HTML'] ?? null,
+                                'vendor' => $row['Vendor'] ?? null,
+                                'product_type' => $row['Product Type'] ?? null,
+                                'tags' => $row['Tags'] ?? null,
+                                'published' => strtoupper(trim($row['Published'] ?? 'FALSE')) === 'TRUE',
+                                'variant_sku' => $row['Variant SKU'] ?? null,
+                                'variant_price' => (float) ($row['Variant Price'] ?? 0),
+                                'variant_compare_at_price' => !empty($row['Variant Compare At Price']) ? (float) $row['Variant Compare At Price'] : null,
+                                'variant_requires_shipping' => strtoupper(trim($row['Variant Requires Shipping'] ?? 'TRUE')) === 'TRUE',
+                                'variant_taxable' => strtoupper(trim($row['Variant Taxable'] ?? 'TRUE')) === 'TRUE',
+                                'variant_inventory_tracker' => $row['Variant Inventory Tracker'] ?? null,
+                                'variant_inventory_qty' => (int) ($row['Variant Inventory Qty'] ?? 0),
+                                'variant_inventory_policy' => $row['Variant Inventory Policy'] ?? null,
+                                'variant_fulfillment_service' => $row['Variant Fulfillment Service'] ?? null,
+                                'variant_weight' => !empty($row['Variant Weight']) ? (float) $row['Variant Weight'] : null,
+                                'variant_weight_unit' => $row['Variant Weight Unit'] ?? null,
+                                'image_src' => $row['Image Src'] ?? null,
+                                'image_position' => !empty($row['Image Position']) ? (int) $row['Image Position'] : null,
+                                'image_alt_text' => $row['Image Alt Text'] ?? null,
+                                'import_status' => 'successful'
+                            ]
+                        );
+
+                        // Check if product was just created or updated
+                        $action = $product->wasRecentlyCreated ? 'created' : 'updated';
+
+                        Log::info("Product {$action}", [
+                            'id' => $product->id,
+                            'handle' => $product->handle,
+                            'action' => $action
+                        ]);
+
+                        ImportLog::log(
+                            $upload->id,
+                            'success',
+                            "product_{$action}",
+                            "Product {$action}: {$product->title}",
+                            $product->id
+                        );
+                    });
 
                     $upload->increment('successful_rows');
-
-                    Log::info('Product imported', [
-                        'id' => $product->id,
-                        'handle' => $product->handle
-                    ]);
-
-                    ImportLog::log(
-                        $upload->id,
-                        'success',
-                        'product_imported',
-                        "Product imported: {$product->title}",
-                        $product->id
-                    );
 
                 } catch (\Exception $e) {
                     $upload->increment('failed_rows');
 
-                    Log::error('Product failed', [
+                    Log::error('Product transaction failed', [
                         'row' => $index + 1,
+                        'handle' => $row['Handle'] ?? 'unknown',
                         'error' => $e->getMessage()
                     ]);
 
