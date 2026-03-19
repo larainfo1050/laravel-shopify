@@ -356,7 +356,7 @@ mutation UpdatePrice {
     updated_at
   }
 }
-
+```
 ## ⚠️ Important Note: No Shopify API Integration
 
 **This project does NOT integrate with Shopify API.** 
